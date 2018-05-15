@@ -149,6 +149,7 @@ func search(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, result)
 }
 
+
 func query(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "OPTIONS" {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -168,6 +169,8 @@ func query(w http.ResponseWriter, r *http.Request) {
 
 	from, _ := time.Parse(time.RFC3339Nano, queryRequest.Range.From)
 	to, _ := time.Parse(time.RFC3339Nano, queryRequest.Range.To)
+
+	fmt.Println("from : ", from, " to : ", to)
 
 	var result []QueryResponse
 	var vtmp string
@@ -228,6 +231,11 @@ func query(w http.ResponseWriter, r *http.Request) {
 			 			if to.After(lastUpdate) && lastUpdate.After(from) {
 			 				to = lastUpdate
 			 			}
+						fetchRes, err := rrd.Fetch(filelastup, "AVERAGE", from, to, time.Duration(config.Server.Step)*time.Second)
+						if err != nil {
+							fmt.Println("ERROR: Cannot retrieve time series data from ", filelastup)
+							fmt.Println(err)
+						}
 					 fmt.Println(strings.Join(cdefstring, ","))
 					 e.CDef("vdef" + strconv.Itoa(cdefcount), strings.Join(cdefstring, ","))
 					 e.XportDef("vdef" + strconv.Itoa(cdefcount), "op")
@@ -241,15 +249,20 @@ func query(w http.ResponseWriter, r *http.Request) {
 		 				}
 		 				defer xportRes.FreeValues()
 
+
+
 		 			row := 0
 		 			for ti := xportRes.Start.Add(xportRes.Step); ti.Before(lastUpdate) || ti.Equal(lastUpdate); ti = ti.Add(xportRes.Step) {
-						value := xportRes.ValueAt(len(xportRes.Legends) - 1, row)
-						if !math.IsNaN(value) {
-							product := float64(config.Server.Multiplier) * value
-							cdefpoints = append(cdefpoints, []float64{product, float64(ti.Unix()) * 1000})
-						}
+						if (row + 1) < fetchRes.RowCnt-1 {
+							value:= xportRes.ValueAt(len(xportRes.Legends) - 1, row)
 
-		 				row++
+							if !math.IsNaN(value) {
+								product := float64(config.Server.Multiplier) * value
+								cdefpoints = append(cdefpoints, []float64{product, float64(ti.Unix()) * 1000})
+							}
+
+			 				row++
+						}
 		 		}
 				result = append(result, QueryResponse{Target: fileSearchPath, DataPoints: cdefpoints})
 				continue
